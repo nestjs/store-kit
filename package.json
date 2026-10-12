@@ -52,7 +52,7 @@
   "devDependencies": {
     "@commitlint/cli": "21.2.3",
     "@commitlint/config-angular": "21.2.3",
-    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite": "0.5.9",
     "@prisma/adapter-mariadb": "7.10.0",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
