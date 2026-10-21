@@ -199,7 +199,7 @@ describe('a schema behind the store, and one ahead of it', () => {
     expect(error).toMatchObject({ name: 'NoteSchemaError', schema: 'm_behind', version: 1, requiredVersion: 2 });
     expect((error as Error).message).toBe(
       'PostgresNoteStore: schema "m_behind" is at version 1, and this version of @nestjs/notes needs version 2. Apply its migrations: ' +
-        'set `migrate: true` to apply them at startup, run `npx nest-notes migrate --url <database url> --schema m_behind`, ' +
+        'set `migrate: true` to apply them at startup, run `npx @nestjs/notes migrate --url <database url> --schema m_behind`, ' +
         "or apply `PostgresNoteStore.migrationSql({ schema: 'm_behind', from: 1 })` with your migration tool.",
     );
     await expect(noteSchema.assertMigrated(executor, 'm_behind', 'Ask your DBA.')).rejects.toThrow(

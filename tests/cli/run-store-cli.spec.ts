@@ -34,7 +34,7 @@ describe('runStoreCli()', () => {
   });
 
   it("prints a PostgreSQL package's usage word for word as it did before the kit knew MySQL", async () => {
-    expect((await run(['--help'])).out).toBe(`Usage: nest-notes <command> [options]
+    expect((await run(['--help'])).out).toBe(`Usage: npx @nestjs/notes <command> [options]
 
 PostgresNoteStore's schema (@nestjs/notes/postgres):
 
@@ -56,7 +56,7 @@ Options:
   });
 
   it("prints the usage of a package with a store of each dialect word for word: one line names both stores, over the commands", async () => {
-    expect((await run(['--help'], {}, [noteSchema, mysqlNoteSchema])).out).toBe(`Usage: nest-notes <command> [options]
+    expect((await run(['--help'], {}, [noteSchema, mysqlNoteSchema])).out).toBe(`Usage: npx @nestjs/notes <command> [options]
 
 PostgresNoteStore's schema (@nestjs/notes/postgres) or MySqlNoteStore's (@nestjs/notes/mysql):
 
@@ -79,7 +79,7 @@ Options:
   });
 
   it("prints a MySQL package's usage word for word, its one store over the commands", async () => {
-    expect((await run(['--help'], {}, [mysqlNoteSchema])).out).toBe(`Usage: nest-notes <command> [options]
+    expect((await run(['--help'], {}, [mysqlNoteSchema])).out).toBe(`Usage: npx @nestjs/notes <command> [options]
 
 MySqlNoteStore's schema (@nestjs/notes/mysql):
 
@@ -103,7 +103,7 @@ Options:
   it('prints its usage for --help, and on stderr, exiting with 1, for no command, an unknown one or an unknown option', async () => {
     const help = await run(['--help']);
     expect(help).toMatchObject({ code: 0, err: '' });
-    expect(help.out).toMatch(/^Usage: nest-notes <command> \[options\]\n\nPostgresNoteStore's schema \(@nestjs\/notes\/postgres\):\n/);
+    expect(help.out).toMatch(/^Usage: npx @nestjs\/notes <command> \[options\]\n\nPostgresNoteStore's schema \(@nestjs\/notes\/postgres\):\n/);
     expect(help.out).toContain('--schema <name>    The store\'s schema. Default: nest_notes\n');
     expect(help.out).toContain('--dialect <name>   sql: the database it\'s for (postgres). Default: postgres\n');
     expect(help.out).toContain('--statement-breakpoints\n');
@@ -114,28 +114,28 @@ Options:
   });
 
   it('needs the database for migrate and status: --url, else DATABASE_URL, of a dialect it supports', async () => {
-    expect(await run(['migrate'])).toEqual({ code: 1, out: '', err: 'nest-notes migrate needs the database: pass --url, or set DATABASE_URL.\n' });
-    expect((await run(['status'])).err).toBe('nest-notes status needs the database: pass --url, or set DATABASE_URL.\n');
+    expect(await run(['migrate'])).toEqual({ code: 1, out: '', err: 'npx @nestjs/notes migrate needs the database: pass --url, or set DATABASE_URL.\n' });
+    expect((await run(['status'])).err).toBe('npx @nestjs/notes status needs the database: pass --url, or set DATABASE_URL.\n');
 
     const secret = 'mysql://root:s3cret@db.internal:3306/shop';
     expect(await run(['migrate', '--url', secret])).toEqual({
       code: 1,
       out: '',
-      err: "nest-notes: MySQL isn't supported yet: the stores of @nestjs/notes run on PostgreSQL.\n",
+      err: "npx @nestjs/notes: MySQL isn't supported yet: the stores of @nestjs/notes run on PostgreSQL.\n",
     });
     expect(await run(['status'], { DATABASE_URL: 'https://admin:s3cret@db.internal/shop' })).toEqual({
       code: 1,
       out: '',
-      err: 'nest-notes status takes a database URL that starts with postgres:// or postgresql://.\n',
+      err: 'npx @nestjs/notes status takes a database URL that starts with postgres:// or postgresql://.\n',
     });
-    expect((await run(['status', '--url', 'localhost:5432/shop'])).err).toBe('nest-notes status takes a database URL that starts with postgres:// or postgresql://.\n');
+    expect((await run(['status', '--url', 'localhost:5432/shop'])).err).toBe('npx @nestjs/notes status takes a database URL that starts with postgres:// or postgresql://.\n');
   });
 
   it("prints the SQL of the dialect --dialect names: one the kit doesn't support yet, or an unknown one, fails", async () => {
     expect(await run(['sql', '--dialect', 'mysql'])).toEqual({
       code: 1,
       out: '',
-      err: "nest-notes: MySQL isn't supported yet: the stores of @nestjs/notes run on PostgreSQL.\n",
+      err: "npx @nestjs/notes: MySQL isn't supported yet: the stores of @nestjs/notes run on PostgreSQL.\n",
     });
     expect(await run(['sql', '--dialect', 'oracle'])).toEqual({ code: 1, out: '', err: '--dialect takes postgres or mysql, not "oracle".\n' });
   });

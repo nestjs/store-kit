@@ -27,7 +27,7 @@ export interface StoreOptions<D extends SqlDialect = SqlDialect> {
   schema?: string;
   /**
    * Apply the store's pending migrations at startup, so processes that start together migrate once. With `false`,
-   * startup fails while the schema is behind the store: apply them with the package's command (`npx nest-<package>
+   * startup fails while the schema is behind the store: apply them with the package's command (`npx @nestjs/<package>
    * migrate`), or with your own migration tool (`migrationSql()`). Default: `true`, except when `NODE_ENV` is
    * `production`.
    */

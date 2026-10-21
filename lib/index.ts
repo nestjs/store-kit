@@ -11,6 +11,6 @@ export { isNotATransactionError } from './sql/index.js';
 // serves its PostgreSQL and MySQL stores alike
 export { toBool, toInt, toJson, toText } from './sql/index.js';
 
-// A package's command for its stores' schemas (`nest-<package> migrate|status|sql`), by the URL's dialect
+// A package's command for its stores' schemas (`npx @nestjs/<package> migrate|status|sql`), by the URL's dialect
 export { runStoreCli } from './cli/index.js';
 export type { StoreCliIo } from './interfaces/index.js';

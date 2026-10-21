@@ -43,12 +43,13 @@ export interface StoreSchemaErrorDetails {
 export interface StoreSchemaOptions {
   /**
    * The package the store ships in, as users install it (`'@nestjs/outbox'`). Messages name it, the store lives at its
-   * `/postgres` (or `/mysql`) subpath, and it keys the migration lock: `<packageName>:migrate:<schema>`.
+   * `/postgres` (or `/mysql`) subpath, and it keys the migration lock: `<packageName>:migrate:<schema>`. The usage and
+   * the messages tell users to run the package's command as `npx <packageName>`.
    */
   packageName: string;
   /** The store's class (`'PostgresOutboxStore'`): messages start with it, and name its `migrationSql()`. */
   storeName: string;
-  /** The package's bin (`'nest-outbox'`), built on `runStoreCli()`: the usage and the messages name it. */
+  /** The package's bin (`'nest-outbox'`), built on `runStoreCli()`: its only one, so that `npx <packageName>` runs it. */
   command: string;
   /** The schema the store's tables live in unless the application names another (`'nest_outbox'`). */
   defaultSchema: string;

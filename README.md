@@ -81,7 +81,7 @@ export class PostgresOutboxStore implements OutboxStore, OnModuleInit {
 }
 ```
 
-The package's bin (`nest-outbox migrate|status|sql`):
+The package's bin (`nest-outbox`), which users run as `npx @nestjs/outbox migrate|status|sql`:
 
 ```ts
 #!/usr/bin/env node

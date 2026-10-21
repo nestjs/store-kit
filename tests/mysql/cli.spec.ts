@@ -52,7 +52,7 @@ describe('runStoreCli() and MySQL', () => {
     expect(await run(mysqlOnly, ['sql', '--dialect', 'postgres'])).toEqual({
       code: 1,
       out: '',
-      err: "nest-notes: PostgreSQL isn't supported yet: the stores of @nestjs/notes run on MySQL.\n",
+      err: "npx @nestjs/notes: PostgreSQL isn't supported yet: the stores of @nestjs/notes run on MySQL.\n",
     });
     expect((await run(mysqlOnly, ['sql', '--schema', 'Shop'])).err).toContain('MySqlNoteStore: invalid schema "Shop".');
   });
@@ -61,15 +61,15 @@ describe('runStoreCli() and MySQL', () => {
     expect(await run(mysqlOnly, ['migrate', '--url', 'postgres://admin:s3cret@db.internal/shop'])).toEqual({
       code: 1,
       out: '',
-      err: "nest-notes: PostgreSQL isn't supported yet: the stores of @nestjs/notes run on MySQL.\n",
+      err: "npx @nestjs/notes: PostgreSQL isn't supported yet: the stores of @nestjs/notes run on MySQL.\n",
     });
     expect(await run(mysqlOnly, ['status', '--url', 'mariadb://admin:s3cret@db.internal/shop'])).toEqual({
       code: 1,
       out: '',
-      err: 'nest-notes status takes a database URL that starts with mysql://.\n',
+      err: 'npx @nestjs/notes status takes a database URL that starts with mysql://.\n',
     });
     expect((await run(both, ['status', '--url', 'mariadb://admin:s3cret@db.internal/shop'])).err).toBe(
-      'nest-notes status takes a database URL that starts with postgres:// or postgresql:// or mysql://.\n',
+      'npx @nestjs/notes status takes a database URL that starts with postgres:// or postgresql:// or mysql://.\n',
     );
   });
 

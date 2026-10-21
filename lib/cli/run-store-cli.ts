@@ -5,8 +5,8 @@ import { DIALECT_NAMES, type SqlDialect } from '../schema/dialect.js';
 import { CLI_DIALECTS, URL_SCHEMES } from './cli-dialects.js';
 
 /**
- * A package's command for its stores' schemas (`nest-outbox migrate|status|sql`), from a shell or a CI step: resolves
- * to the process's exit code. `migrate` and `status` reach the database of the URL's dialect (`postgres://`,
+ * A package's command for its stores' schemas (`npx @nestjs/outbox migrate|status|sql`), from a shell or a CI step:
+ * resolves to the process's exit code. `migrate` and `status` reach the database of the URL's dialect (`postgres://`,
  * `postgresql://`, `mysql://`) with its driver from the application's dependencies (`pg`, `mysql2`); `sql` prints the
  * SQL of `--dialect` (default: the only one, or `postgres`) and needs no database. `schemas` holds one `StoreSchema`
  * per dialect the package's stores run on (`[pgSchema, mysqlSchema]`). A package's bin:
@@ -26,7 +26,8 @@ export async function runStoreCli(schemas: readonly CliStoreSchema[], argv: read
     throw new TypeError("runStoreCli() takes the schemas of one package's stores: at least one, one per dialect, with the same command.");
   }
 
-  const { command } = first;
+  // The package's bin as users run it: npx runs a package's only bin by the package's name.
+  const command = `npx ${first.packageName}`;
   const usage = usageOf(schemas);
   let parsed: ReturnType<typeof parse>;
   try {
@@ -102,7 +103,7 @@ export async function runStoreCli(schemas: readonly CliStoreSchema[], argv: read
 }
 
 function usageOf(schemas: readonly CliStoreSchema[]): string {
-  const [{ command, packageName, defaultSchema }] = schemas;
+  const [{ packageName, defaultSchema }] = schemas;
   // One line over the commands, which serve every store: "PostgresOutboxStore's schema (@nestjs/outbox/postgres):",
   // or "... (@nestjs/outbox/postgres) or MySqlOutboxStore's (@nestjs/outbox/mysql):" for a package with both.
   const named = schemas.map((schema, i) => `${schema.storeName}'s${i === 0 ? ' schema' : ''} (${schema.packageName}/${schema.dialect})`);
@@ -114,7 +115,7 @@ function usageOf(schemas: readonly CliStoreSchema[]): string {
     ? "Apply the migrations the schema hasn't had yet (one transaction, under an advisory lock)"
     : `Apply the migrations the schema hasn't had yet${postgres ? ' (PostgreSQL: one transaction, under an advisory lock;\n            MySQL: ' : ' ('}one statement at a time, under GET_LOCK(), resuming where a failed run stopped)`;
   const urls = [...(postgres ? ['postgres://...'] : []), ...(mysql ? ['mysql://...'] : [])].join(' or ');
-  return `Usage: ${command} <command> [options]
+  return `Usage: npx ${packageName} <command> [options]
 
 ${stores}
 
@@ -199,9 +200,9 @@ function pick(schemas: readonly CliStoreSchema[], dialect: SqlDialect): CliStore
     return schema;
   }
 
-  const [{ command, packageName }] = schemas;
+  const [{ packageName }] = schemas;
   const supported = schemas.map((candidate) => DIALECT_NAMES[candidate.dialect]).join(' and ');
-  throw new Error(`${command}: ${DIALECT_NAMES[dialect]} isn't supported yet: the stores of ${packageName} run on ${supported}.`);
+  throw new Error(`npx ${packageName}: ${DIALECT_NAMES[dialect]} isn't supported yet: the stores of ${packageName} run on ${supported}.`);
 }
 
 function processIo(): StoreCliIo {
