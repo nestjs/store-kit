@@ -101,10 +101,10 @@ describe('the MySQL StoreSchema.resolveOptions()', () => {
 });
 
 describe('the server and connection a MySQL store runs on', () => {
-  const mariadb = "MySqlNoteStore runs on MySQL, and this server is MariaDB (11.4.2-MariaDB-ubu2404): MariaDB isn't supported yet.";
+  const mariadb = 'MySqlNoteStore runs on MySQL 8.4 LTS and 9.x, and on MariaDB 11.4 LTS and later, and this server is MariaDB 10.11.9-MariaDB-ubu2204.';
 
-  it('refuses MariaDB before any SQL of its own, on the store\'s connections and on the command line\'s paths (version(), migrate()) alike', async () => {
-    const { executor, statements } = fakeServer('11.4.2-MariaDB-ubu2404');
+  it('refuses a MariaDB older than 11.4 before any SQL of its own, on the store\'s connections and on the command line\'s paths (version(), migrate()) alike', async () => {
+    const { executor, statements } = fakeServer('10.11.9-MariaDB-ubu2204');
     const store = new MySqlNoteStore({ executor });
     await expect(store.onModuleInit()).rejects.toThrow(mariadb);
     await expect(store.addInTransaction({}, { id: 'n-1', body: 'hello', createdAt: 1 })).rejects.toThrow(mariadb);
@@ -114,7 +114,7 @@ describe('the server and connection a MySQL store runs on', () => {
     expect(new Set(statements)).toEqual(new Set(['SELECT VERSION() AS version']));
   });
 
-  it('refuses a server that isn\'t MySQL, and a MySQL older than 8.0.19; takes 8.0.19 and later, and Aurora\'s versions', async () => {
+  it('refuses a server that isn\'t MySQL or MariaDB, a MySQL older than 8.0.19 and a MariaDB older than 11.4; takes 8.0.19 and later, Aurora\'s versions, and MariaDB 11.4 and later', async () => {
     await expect(new MySqlNoteStore({ executor: fakeServer('PostgreSQL 18.6 (Debian 18.6-1.pgdg13+1) on aarch64-unknown-linux-gnu').executor }).onModuleInit()).rejects.toThrow(
       'MySqlNoteStore runs on MySQL, and this server is PostgreSQL 18.6.',
     );
@@ -123,7 +123,12 @@ describe('the server and connection a MySQL store runs on', () => {
         `MySqlNoteStore runs on MySQL 8.4 LTS and 9.x (8.0.19 and later may work), and this server is MySQL ${version}.`,
       );
     }
-    for (const version of ['8.0.19', '8.0.43-0ubuntu0.22.04.1', '8.4.6', '9.7.0', '8.0.mysql_aurora.3.05.2']) {
+    for (const version of ['10.6.28-MariaDB-ubu2204', '11.3.2-MariaDB']) {
+      await expect(mysqlNoteSchema.version(fakeServer(version).executor, 'nest_notes')).rejects.toThrow(
+        `MySqlNoteStore runs on MySQL 8.4 LTS and 9.x, and on MariaDB 11.4 LTS and later, and this server is MariaDB ${version}.`,
+      );
+    }
+    for (const version of ['8.0.19', '8.0.43-0ubuntu0.22.04.1', '8.4.6', '9.7.0', '8.0.mysql_aurora.3.05.2', '11.4.2-MariaDB-ubu2404', '11.8.9-MariaDB-ubu2404', '12.1.2-MariaDB']) {
       // Past the check, the fake server has no answer to the version's own query.
       await expect(mysqlNoteSchema.version(fakeServer(version).executor, 'nest_notes')).rejects.toThrow('the fake server has no answer to: SELECT CAST(COUNT(*) AS CHAR)');
     }

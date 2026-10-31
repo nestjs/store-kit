@@ -231,6 +231,8 @@ export interface TestDatabase {
   url: string;
   /** A pool for looking at the database from outside the store. */
   admin: mysql.Pool;
+  /** Whether the server is MariaDB rather than MySQL. */
+  mariadb: boolean;
 }
 
 /**
@@ -254,7 +256,7 @@ export async function testDatabase(name: string): Promise<{ database: TestDataba
     await admin.end();
     await server.stop();
   });
-  return { database: { name: database, url, admin } };
+  return { database: { name: database, url, admin, mariadb: server.mariadb } };
 }
 
 /** In a describe of tests that run on MySQL: skips them, with the reason, where there's none. */

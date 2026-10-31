@@ -5,12 +5,18 @@
  * it; the same object as the `native` of a transaction the executor opened, whose own API writes in it, as does a
  * store given it; an insert that meets a known id is a no-op there, and the application's transaction goes on (MySQL
  * rolls back the statement, not the transaction). And what a store may assume of the application's transactions: REPEATABLE READ,
- * MySQL's default, reads a snapshot, and a locking read sees the latest committed rows.
+ * MySQL's default, reads a snapshot, and a locking read sees the latest committed rows (on MariaDB with
+ * `innodb_snapshot_isolation` on, its default since 11.6.2, it fails with 1020 instead).
  */
+import { mysqlErrorCode } from '../../lib/mysql/index.js';
 import { MySqlNoteStore } from '../fixtures/notes/mysql-note.store.js';
 import { clients, onMysql, singleConnectionClient, testDatabase, type Client } from './support.js';
 
 const { database, reason } = await testDatabase('transactions');
+
+/** Whether the server is a MariaDB whose REPEATABLE READ refuses a locking read of a row changed since the snapshot. */
+const snapshotIsolation =
+  !!database?.mariadb && Number(((await database.admin.query('SELECT @@innodb_snapshot_isolation AS on_'))[0] as Array<{ on_: unknown }>)[0]?.on_) === 1;
 
 const targets = [...clients, singleConnectionClient].map((factory, i) => ({ name: `${factory.name} on MySQL`, schema: `tx_${i}`, open: () => factory.open(database!.url) }));
 
@@ -95,7 +101,7 @@ describe.each(targets)('$name', ({ schema, open }) => {
     expect(await store.get(id)).toEqual({ id, body: 'first', tags: [], archived: false, createdAt: 1 });
   });
 
-  it("reads a snapshot in the application's REPEATABLE READ transaction, and the latest committed rows with a locking read", async () => {
+  it("reads a snapshot in the application's REPEATABLE READ transaction, and the latest committed rows with a locking read (1020 under MariaDB's snapshot isolation)", async () => {
     const id = `${schema}-late`;
     await client.transaction(async (tx) => {
       const joined = client.executor.wrapTransaction(tx);
@@ -103,7 +109,12 @@ describe.each(targets)('$name', ({ schema, open }) => {
       await outside(`INSERT INTO ${schema}_notes (id, body, created_at) VALUES (?, 'late', 1)`, [id]);
 
       expect(await joined.query(`SELECT id FROM ${schema}_notes WHERE id = ?`, [id])).toEqual([]);
-      expect(await joined.query(`SELECT id FROM ${schema}_notes WHERE id = ? FOR SHARE`, [id])).toEqual([{ id }]);
+      const locking = joined.query(`SELECT id FROM ${schema}_notes WHERE id = ? LOCK IN SHARE MODE`, [id]);
+      if (snapshotIsolation) {
+        expect(mysqlErrorCode(await locking.catch((e: unknown) => e))).toBe(1020);
+      } else {
+        expect(await locking).toEqual([{ id }]);
+      }
     }, 'repeatable read');
   });
 });

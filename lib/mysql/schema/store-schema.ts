@@ -268,8 +268,8 @@ export class StoreSchema {
   }
 
   /**
-   * The store's readiness (see `StoreReadiness`): the server and connection checked (MySQL, not MariaDB; 8.0.19 or
-   * later; a strict `sql_mode`; a current database), then the schema migrated (`migrate`) or checked, once;
+   * The store's readiness (see `StoreReadiness`): the server and connection checked (MySQL 8.0.19 or later, or MariaDB
+   * 11.4 or later; a strict `sql_mode`; a current database), then the schema migrated (`migrate`) or checked, once;
    * migrations reported to `logger`.
    */
   readiness(options: StoreReadinessOptions): StoreReadiness {

@@ -6,10 +6,15 @@ import type { DialectCases } from './sql-executor.contract.js';
 
 const ISOLATION_LEVELS: SqlIsolationLevel[] = ['read uncommitted', 'read committed', 'repeatable read', 'serializable'];
 
+/** The connection's thread in `performance_schema`: MySQL's `PS_CURRENT_THREAD_ID()`, which MariaDB doesn't have. */
+const THIS_THREAD = '(SELECT THREAD_ID FROM performance_schema.threads WHERE PROCESSLIST_ID = CONNECTION_ID())';
+
 /**
- * The contract's cases in MySQL's SQL. A transaction's own isolation level and identity aren't in any variable
- * (`@@transaction_isolation` is the connection's), so the isolation and connection cases read
- * `performance_schema.events_transactions_current`: on by default, and readable with SELECT on `performance_schema`.
+ * The contract's cases in the SQL of MySQL and MariaDB. A transaction's own isolation level and identity aren't in any
+ * variable (`@@transaction_isolation` is the connection's), so the isolation and connection cases read
+ * `performance_schema.events_transactions_current`: on by default on MySQL, and readable with SELECT on
+ * `performance_schema`. MariaDB needs the performance schema on (`--performance-schema=ON`, a startup option) and its
+ * `events_transactions_current` consumer and `transaction` instrument enabled (both off by default).
  */
 export const MYSQL_CASES: DialectCases = {
   createTable: (table) =>
@@ -39,8 +44,8 @@ export const MYSQL_CASES: DialectCases = {
       equal(await execute(`DELETE FROM ${table} WHERE id = ?`, ['w1']), { affectedRows: 0 }, 'execute() of a DELETE of no rows');
       await execute(`DELETE FROM ${table}`);
 
-      const failure = await rejection(executor.query('SELECT CAST(? AS JSON) AS doc', ['not json']), 'query() of a failing statement');
-      includes(messages(failure), 'Invalid JSON text', 'query() of a failing statement');
+      const failure = await rejection(executor.query(`SELECT id FROM ${table}_missing WHERE id = ?`, ['none']), 'query() of a failing statement');
+      includes(messages(failure), "doesn't exist", 'query() of a failing statement');
       equal(await executor.query('SELECT ? AS status', ['next']), [{ status: 'next' }], 'query() after a failed statement');
     },
 
@@ -183,7 +188,7 @@ export const MYSQL_CASES: DialectCases = {
         (
           await db.query<{ id: string }>(
             `SELECT CONCAT(THREAD_ID, ':', EVENT_ID) AS id FROM performance_schema.events_transactions_current
-WHERE THREAD_ID = PS_CURRENT_THREAD_ID() AND (SELECT COUNT(*) FROM ${table}) >= 0`,
+WHERE THREAD_ID = ${THIS_THREAD} AND (SELECT COUNT(*) FROM ${table}) >= 0`,
           )
         )[0]?.id;
       const outside = Array.from({ length: 10 }, () => id(executor));
@@ -278,16 +283,16 @@ async function transactionIsolation(tx: SqlTransaction): Promise<{ level: string
   try {
     [row] = await tx.query<{ level?: string; connection?: string }>(
       `SELECT ISOLATION_LEVEL AS level, @@session.transaction_isolation AS connection FROM performance_schema.events_transactions_current
-WHERE THREAD_ID = PS_CURRENT_THREAD_ID()`,
+WHERE THREAD_ID = ${THIS_THREAD}`,
     );
   } catch (error) {
     throw new Error(
-      `The MySQL isolation case reads performance_schema.events_transactions_current, which needs SELECT on performance_schema (the performance schema is on by default): ${messages(error)}`,
+      `The MySQL isolation case reads performance_schema.events_transactions_current, which needs SELECT on performance_schema (the performance schema is on by default on MySQL; MariaDB needs --performance-schema=ON): ${messages(error)}`,
     );
   }
   if (!row) {
     throw new Error(
-      "The MySQL isolation case reads performance_schema.events_transactions_current, and it has no transaction of this connection's: enable the events_transactions_current consumer and the transaction instrument (on by default).",
+      "The MySQL isolation case reads performance_schema.events_transactions_current, and it has no transaction of this connection's: enable the events_transactions_current consumer and the transaction instrument (on by default on MySQL, off on MariaDB).",
     );
   }
   return { level: row.level?.toLowerCase(), connection: row.connection };

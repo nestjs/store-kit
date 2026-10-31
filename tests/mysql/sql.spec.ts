@@ -41,8 +41,8 @@ describe('SqlParams on MySQL', () => {
       'CAST(? AS SIGNED)',
       'CAST(? AS UNSIGNED)',
       'CAST(? AS UNSIGNED)',
-      'CAST(? AS JSON)',
-      'CAST(? AS JSON)',
+      "JSON_EXTRACT(?, '$')",
+      "JSON_EXTRACT(?, '$')",
       '?',
       'CAST(? AS SIGNED)',
     ]);
@@ -70,8 +70,8 @@ describe('SqlParams on MySQL', () => {
 
   it('writes JSON with numbers other than safe integers as JSON_SET() of each at its path, cast from text as a DOUBLE', () => {
     const p = new SqlParams();
-    expect(p.json({ n: 2 ** 53 - 1, list: [1, 0.5], 'a "b"': { c: 1e-30 } })).toBe('JSON_SET(CAST(? AS JSON), ?, CAST(? AS DOUBLE), ?, CAST(? AS DOUBLE))');
-    expect(p.json(0.1 + 0.2)).toBe('JSON_SET(CAST(? AS JSON), ?, CAST(? AS DOUBLE))');
+    expect(p.json({ n: 2 ** 53 - 1, list: [1, 0.5], 'a "b"': { c: 1e-30 } })).toBe("JSON_SET(JSON_EXTRACT(?, '$'), ?, CAST(? AS DOUBLE), ?, CAST(? AS DOUBLE))");
+    expect(p.json(0.1 + 0.2)).toBe("JSON_SET(JSON_EXTRACT(?, '$'), ?, CAST(? AS DOUBLE))");
     expect(p.values).toEqual([
       '{"n":9007199254740991,"list":[1,0],"a \\"b\\"":{"c":0}}',
       '$."list"[1]',
@@ -84,7 +84,7 @@ describe('SqlParams on MySQL', () => {
     ]);
     // What JSON.stringify() writes is what's walked: toJSON(), and no undefined members.
     const q = new SqlParams();
-    expect(q.json({ at: new Date(0), skipped: undefined, n: 2 ** 60 })).toBe('JSON_SET(CAST(? AS JSON), ?, CAST(? AS DOUBLE))');
+    expect(q.json({ at: new Date(0), skipped: undefined, n: 2 ** 60 })).toBe("JSON_SET(JSON_EXTRACT(?, '$'), ?, CAST(? AS DOUBLE))");
     expect(q.values).toEqual(['{"at":"1970-01-01T00:00:00.000Z","n":0}', '$."n"', '1152921504606847000']);
   });
 
@@ -262,7 +262,7 @@ describe('lockKeys()', () => {
     const tx: SqlTransaction = {
       query: async <R extends object>(text: string, params?: readonly unknown[]) => {
         taken.push([text, ...(params ?? [])]);
-        return (text.includes('FOR SHARE') && params?.[0] === hash('k:held') ? [{ id: 'held' }] : []) as R[];
+        return (text.includes('LOCK IN SHARE MODE') && params?.[0] === hash('k:held') ? [{ id: 'held' }] : []) as R[];
       },
       execute: async (text, params) => {
         taken.push([text, ...(params ?? [])]);
@@ -282,14 +282,14 @@ describe('lockKeys()', () => {
     const [first, second] = ['k:held', 'k:new'].map(hash).sort();
     const newest = hash('k:new');
     expect(taken).toEqual([
-      ['SELECT id FROM `nest_notes_locks` WHERE id = ? FOR SHARE', first],
+      ['SELECT id FROM `nest_notes_locks` WHERE id = ? LOCK IN SHARE MODE', first],
       ...(first === newest
         ? [
             ['INSERT INTO `nest_notes_locks` (id) VALUES (?) ON DUPLICATE KEY UPDATE id = id', first],
             ['SELECT id FROM `nest_notes_locks` WHERE id IN (?) ORDER BY id FOR UPDATE', first],
           ]
         : []),
-      ['SELECT id FROM `nest_notes_locks` WHERE id = ? FOR SHARE', second],
+      ['SELECT id FROM `nest_notes_locks` WHERE id = ? LOCK IN SHARE MODE', second],
       ...(second === newest
         ? [
             ['INSERT INTO `nest_notes_locks` (id) VALUES (?) ON DUPLICATE KEY UPDATE id = id', second],
@@ -438,7 +438,7 @@ describe.each(clients)('retryOnDeadlock() through $name', (factory) => {
         retryOnDeadlock(client.executor, async (tx) => {
           attempts[mine]++;
           const [level] = await tx.query<{ level: string }>(
-            'SELECT ISOLATION_LEVEL AS level FROM performance_schema.events_transactions_current WHERE THREAD_ID = PS_CURRENT_THREAD_ID()',
+            'SELECT ISOLATION_LEVEL AS level FROM performance_schema.events_transactions_current WHERE THREAD_ID = (SELECT THREAD_ID FROM performance_schema.threads WHERE PROCESSLIST_ID = CONNECTION_ID())',
           );
           levels.push(level!.level);
           await tx.query(`SELECT id FROM ${table} WHERE id = ? FOR UPDATE`, [mine]);

@@ -14,8 +14,8 @@ const ROWS_PER_STATEMENT = 1_000;
  * share one; the rows are taken in the order of those ids, each once, so two transactions locking overlapping sets
  * can't deadlock. Exclusive locks take two statements for all the keys: the rows ensured (`INSERT ... ON DUPLICATE KEY
  * UPDATE`, which already locks an existing row exclusively), then locked (`SELECT ... FOR UPDATE`). `shared` locks
- * (`FOR SHARE`) exclude exclusive ones, not each other; a key's first lock creates its row, and holds it exclusively
- * even when asked for a shared one.
+ * (`LOCK IN SHARE MODE`, MySQL 8's `FOR SHARE` in the spelling MariaDB takes too) exclude exclusive ones, not each
+ * other; a key's first lock creates its row, and holds it exclusively even when asked for a shared one.
  *
  * ```ts
  * await retryOnDeadlock(this.executor, async (tx) => {
@@ -50,7 +50,7 @@ export async function lockKeys(transaction: SqlTransaction, schema: string, keys
 
   // One by one, in the ids' order: a row that doesn't exist yet is created, and locked exclusively, in its turn.
   for (const id of ids) {
-    const held = await transaction.query(`SELECT id FROM ${table} WHERE id = ? FOR SHARE`, [id]);
+    const held = await transaction.query(`SELECT id FROM ${table} WHERE id = ? LOCK IN SHARE MODE`, [id]);
     if (held.length === 0) {
       await exclusive([id]);
     }
