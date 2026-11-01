@@ -12,7 +12,7 @@ export { isNotATransactionError } from '../sql/index.js';
 
 // A store's schema: its versioned migrations and their SQL, the store's options, and its readiness
 export { StoreSchema } from './schema/index.js';
-export type { ResolvedStoreOptions, StoreMigration, StoreOptions, StoreReadinessOptions, StoreSchemaOptions } from './interfaces/index.js';
+export type { MySqlServer, MySqlStoreReadiness, ResolvedStoreOptions, StoreMigration, StoreOptions, StoreReadinessOptions, StoreSchemaOptions } from './interfaces/index.js';
 export type { MigrationSqlOptions, MigrationStatementsOptions, StoreReadiness, StoreSchemaErrorDetails } from '../interfaces/index.js';
 
 // A store's statements: parameters as text with casts, columns read as text, identifiers and tables quoted, key

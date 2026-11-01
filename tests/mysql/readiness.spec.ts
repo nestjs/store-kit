@@ -8,10 +8,10 @@
  */
 import mysql from 'mysql2/promise';
 import pg from 'pg';
-import { fromMysql2, type SqlExecutor, type SqlTransaction } from '../../lib/mysql/index.js';
+import { fromMysql2, StoreSchema, type SqlExecutor, type SqlTransaction } from '../../lib/mysql/index.js';
 import { fromPg } from '../../lib/postgres/index.js';
 import { NoteSchemaError } from '../fixtures/notes/note.schema.js';
-import { mysqlNoteSchema } from '../fixtures/notes/mysql-note.schema.js';
+import { mysqlNoteSchema, mysqlNoteSchemaOptions } from '../fixtures/notes/mysql-note.schema.js';
 import { MySqlNoteStore } from '../fixtures/notes/mysql-note.store.js';
 import { onMysql, recording, testDatabase } from './support.js';
 
@@ -47,14 +47,28 @@ async function withNodeEnv<T>(value: string | undefined, work: () => T | Promise
   }
 }
 
-/** An executor of a server that answers the check's two statements as told, and nothing else. */
-function fakeServer(version: string, settings: { sql_mode: string; current_database: string | null } = { sql_mode: 'STRICT_TRANS_TABLES', current_database: 'shop' }) {
+/**
+ * An executor of a server that answers the check's statements as told, and nothing else. `collation` is MariaDB's
+ * `utf8mb4_0900_bin`: NO PAD (11.4.7+, 11.8.2+), an alias of the PAD SPACE `utf8mb4_bin` (11.4.5, 11.8.0-11.8.1), or
+ * missing (before 11.4.5).
+ */
+function fakeServer(
+  version: string,
+  settings: { sql_mode: string; current_database: string | null } = { sql_mode: 'STRICT_TRANS_TABLES', current_database: 'shop' },
+  collation: 'no pad' | 'pad' | 'missing' = 'no pad',
+) {
   const statements: string[] = [];
   const db: SqlTransaction = {
     query: async <R extends object>(text: string) => {
       statements.push(text);
       if (text === 'SELECT VERSION() AS version') {
         return [{ version }] as R[];
+      }
+      if (text.includes('COLLATE utf8mb4_0900_bin')) {
+        if (collation === 'missing') {
+          throw Object.assign(new Error("Unknown collation: 'utf8mb4_0900_bin'"), { errno: 1273, sqlState: 'HY000', sqlMessage: "Unknown collation: 'utf8mb4_0900_bin'" });
+        }
+        return [{ padded: collation === 'pad' ? '1' : '0' }] as R[];
       }
       if (text.includes('@@session.sql_mode')) {
         return [settings] as R[];
@@ -101,21 +115,41 @@ describe('the MySQL StoreSchema.resolveOptions()', () => {
 });
 
 describe('the server and connection a MySQL store runs on', () => {
-  const mariadb = "MySqlNoteStore runs on MySQL, and this server is MariaDB (11.4.2-MariaDB-ubu2404): MariaDB isn't supported yet.";
-
-  it('refuses MariaDB before any SQL of its own, on the store\'s connections and on the command line\'s paths (version(), migrate()) alike', async () => {
-    const { executor, statements } = fakeServer('11.4.2-MariaDB-ubu2404');
-    const store = new MySqlNoteStore({ executor });
-    await expect(store.onModuleInit()).rejects.toThrow(mariadb);
-    await expect(store.addInTransaction({}, { id: 'n-1', body: 'hello', createdAt: 1 })).rejects.toThrow(mariadb);
-    await expect(mysqlNoteSchema.migrate(executor, 'nest_notes')).rejects.toThrow(mariadb);
-    await expect(mysqlNoteSchema.version(executor, 'nest_notes')).rejects.toThrow(mariadb);
-    await expect(mysqlNoteSchema.assertMigrated(executor, 'nest_notes')).rejects.toThrow(mariadb);
+  it("refuses MariaDB for a store that doesn't opt in, before any SQL of its own, on the store's paths and the command line's (version(), migrate()) alike", async () => {
+    const mysqlOnly = new StoreSchema({ ...mysqlNoteSchemaOptions, mariadb: undefined });
+    const refused = "MySqlNoteStore runs on MySQL, and this server is MariaDB (11.8.9-MariaDB-ubu2404): MariaDB isn't supported yet.";
+    const { executor, statements } = fakeServer('11.8.9-MariaDB-ubu2404');
+    await expect(mysqlOnly.readiness({ ...mysqlOnly.resolveOptions({ executor }) }).ready()).rejects.toThrow(refused);
+    await expect(mysqlOnly.migrate(executor, 'nest_notes')).rejects.toThrow(refused);
+    await expect(mysqlOnly.version(executor, 'nest_notes')).rejects.toThrow(refused);
+    await expect(mysqlOnly.assertMigrated(executor, 'nest_notes')).rejects.toThrow(refused);
     expect(new Set(statements)).toEqual(new Set(['SELECT VERSION() AS version']));
+    expect(() => new StoreSchema({ ...mysqlNoteSchemaOptions, mariadb: 'yes' as never })).toThrow("MySqlNoteStore's StoreSchema: `mariadb` must be a boolean, not \"yes\".");
   });
 
-  it('refuses a server that isn\'t MySQL, and a MySQL older than 8.0.19; takes 8.0.19 and later, and Aurora\'s versions', async () => {
+  it("refuses a MariaDB whose utf8mb4_0900_bin is missing (before 11.4.5) or pads (11.4.5, 11.8.0-11.8.1), before any SQL of its own, on every path", async () => {
+    for (const [version, collation, problem] of [
+      ['11.4.4-MariaDB-ubu2404', 'missing', "doesn't have it"],
+      ['11.4.5-MariaDB-ubu2404', 'pad', 'pads it, so abc and "abc " would be the same key'],
+    ] as const) {
+      const refused = `MySqlNoteStore runs on MySQL 8.4 LTS and 9.x, and on MariaDB 11.4.7 and later or 11.8.2 and later, where utf8mb4_0900_bin compares without padding, and this server (${version}) ${problem}.`;
+      const { executor, statements } = fakeServer(version, undefined, collation);
+      const store = new MySqlNoteStore({ executor });
+      await expect(store.onModuleInit()).rejects.toThrow(refused);
+      await expect(store.addInTransaction({}, { id: 'n-1', body: 'hello', createdAt: 1 })).rejects.toThrow(refused);
+      await expect(mysqlNoteSchema.migrate(executor, 'nest_notes')).rejects.toThrow(refused);
+      await expect(mysqlNoteSchema.version(executor, 'nest_notes')).rejects.toThrow(refused);
+      await expect(mysqlNoteSchema.assertMigrated(executor, 'nest_notes')).rejects.toThrow(refused);
+      expect(new Set(statements)).toEqual(new Set(['SELECT VERSION() AS version', "SELECT CAST(_utf8mb4'abc' = _utf8mb4'abc ' COLLATE utf8mb4_0900_bin AS CHAR) AS padded"]));
+    }
+  });
+
+  it("refuses a server that isn't MySQL or MariaDB and a MySQL older than 8.0.19; takes 8.0.19 and later, Aurora's versions, and MariaDB with a NO PAD utf8mb4_0900_bin", async () => {
     await expect(new MySqlNoteStore({ executor: fakeServer('PostgreSQL 18.6 (Debian 18.6-1.pgdg13+1) on aarch64-unknown-linux-gnu').executor }).onModuleInit()).rejects.toThrow(
+      'MySqlNoteStore runs on MySQL or MariaDB, and this server is PostgreSQL 18.6.',
+    );
+    const mysqlOnly = new StoreSchema({ ...mysqlNoteSchemaOptions, mariadb: false });
+    await expect(mysqlOnly.version(fakeServer('PostgreSQL 18.6 (Debian 18.6-1.pgdg13+1) on aarch64-unknown-linux-gnu').executor, 'nest_notes')).rejects.toThrow(
       'MySqlNoteStore runs on MySQL, and this server is PostgreSQL 18.6.',
     );
     for (const version of ['5.7.44', '8.0.18', '5.7.mysql_aurora.2.11.2']) {
@@ -123,9 +157,23 @@ describe('the server and connection a MySQL store runs on', () => {
         `MySqlNoteStore runs on MySQL 8.4 LTS and 9.x (8.0.19 and later may work), and this server is MySQL ${version}.`,
       );
     }
-    for (const version of ['8.0.19', '8.0.43-0ubuntu0.22.04.1', '8.4.6', '9.7.0', '8.0.mysql_aurora.3.05.2']) {
+    for (const version of ['8.0.19', '8.0.43-0ubuntu0.22.04.1', '8.4.6', '9.7.0', '8.0.mysql_aurora.3.05.2', '11.4.7-MariaDB-ubu2404', '11.8.9-MariaDB-ubu2404', '12.1.2-MariaDB']) {
       // Past the check, the fake server has no answer to the version's own query.
       await expect(mysqlNoteSchema.version(fakeServer(version).executor, 'nest_notes')).rejects.toThrow('the fake server has no answer to: SELECT CAST(COUNT(*) AS CHAR)');
+    }
+  });
+
+  it("reports the server its check found in the readiness's server, once ready", async () => {
+    for (const [version, server] of [
+      ['8.4.6', 'mysql'],
+      ['11.8.9-MariaDB-ubu2404', 'mariadb'],
+    ] as const) {
+      const { executor } = fakeServer(version);
+      const readiness = mysqlNoteSchema.readiness({ ...mysqlNoteSchema.resolveOptions({ executor, migrate: false }) });
+      expect(readiness.server).toBeUndefined();
+      // Past the check, the schema's version can't be read from the fake server: the check found the server.
+      await expect(readiness.ready()).rejects.toThrow('the fake server has no answer to');
+      expect(readiness.server).toBe(server);
     }
   });
 

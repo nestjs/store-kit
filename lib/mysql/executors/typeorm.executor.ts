@@ -29,7 +29,7 @@ const DATA_SOURCE = Symbol.for('DataSource');
 const ENTITY_MANAGER = Symbol.for('EntityManager');
 
 /**
- * A `SqlExecutor` on a TypeORM `DataSource` of type `'mysql'` (or its `manager`). The transaction object is the
+ * A `SqlExecutor` on a TypeORM `DataSource` of type `'mysql'` or `'mariadb'` (or its `manager`). The transaction object is the
  * `EntityManager` that `dataSource.transaction()` hands its callback, or a `QueryRunner` (or its `manager`) after
  * `startTransaction()`. A DataSource whose mysql2 pool lacks the `FOUND_ROWS` client flag (on by default; `flags`
  * option) is refused: a store's `execute()` counts the rows an UPDATE matched.
@@ -52,12 +52,8 @@ export function fromTypeOrm(dataSource: TypeOrmMySqlDataSourceLike | TypeOrmMySq
   if (!isDataSource(source)) {
     throw new TypeError(`fromTypeOrm() takes a TypeORM DataSource (or its manager), got ${describeValue(dataSource)}.`);
   }
-  if (source.options.type !== 'mysql') {
-    throw new TypeError(
-      source.options.type === 'mariadb'
-        ? "fromTypeOrm() takes a DataSource of type 'mysql': MariaDB isn't supported yet."
-        : `fromTypeOrm() takes a DataSource of type 'mysql', not '${source.options.type}'.`,
-    );
+  if (source.options.type !== 'mysql' && source.options.type !== 'mariadb') {
+    throw new TypeError(`fromTypeOrm() takes a DataSource of type 'mysql' or 'mariadb', not '${source.options.type}'.`);
   }
 
   const options = source.options as { flags?: unknown; extra?: { flags?: unknown } };
@@ -111,8 +107,8 @@ class TypeOrmExecutor implements SqlExecutor {
     }
 
     const type = (runner as { connection?: { options?: { type?: unknown } } }).connection?.options?.type;
-    if (type !== undefined && type !== 'mysql') {
-      throw notATransaction(`Pass the EntityManager of a DataSource of type 'mysql', not '${String(type)}': the store's statements run on MySQL.`);
+    if (type !== undefined && type !== 'mysql' && type !== 'mariadb') {
+      throw notATransaction(`Pass the EntityManager of a DataSource of type 'mysql' or 'mariadb', not '${String(type)}': the store's statements run on MySQL or MariaDB.`);
     }
     return runnerTransaction(runner, transaction);
   }

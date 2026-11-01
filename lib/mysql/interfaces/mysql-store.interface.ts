@@ -1,5 +1,5 @@
 import type { ResolvedStoreOptions as AnyResolvedStoreOptions, StoreOptions as AnyStoreOptions } from '../../interfaces/store-options.interface.js';
-import type { StoreReadinessOptions as AnyStoreReadinessOptions } from '../../interfaces/store-readiness.interface.js';
+import type { StoreReadiness, StoreReadinessOptions as AnyStoreReadinessOptions } from '../../interfaces/store-readiness.interface.js';
 import type { StoreSchemaOptions as AnyStoreSchemaOptions } from '../../interfaces/store-schema-options.interface.js';
 import type { SqlExecutor } from './mysql-executor.interface.js';
 
@@ -105,4 +105,27 @@ export interface StoreMigration {
 export interface StoreSchemaOptions extends Omit<AnyStoreSchemaOptions, 'migrations'> {
   /** Every version of the schema, in order: 1, 2, 3... A new one goes last, and none ever changes once released. */
   migrations: readonly StoreMigration[];
+  /**
+   * Whether the store runs on MariaDB too, where `utf8mb4_0900_bin` is MySQL's NO PAD binary collation (11.4.7 and
+   * later, 11.8.2 and later). Off by default: a store turns it on once its own suite runs on MariaDB, and until then
+   * refuses it.
+   */
+  mariadb?: boolean;
+}
+
+/** The server a MySQL store found its connection on. */
+export type MySqlServer = 'mysql' | 'mariadb';
+
+/**
+ * What `StoreSchema.readiness()` returns on MySQL: the readiness every store awaits, and the server its check found,
+ * for a statement that has to differ between MySQL and MariaDB.
+ *
+ * ```ts
+ * await this.readiness.readyIn(tx);
+ * const batchLength = this.readiness.server === 'mariadb' ? MARIADB_BATCH_LENGTH : BATCH_LENGTH;
+ * ```
+ */
+export interface MySqlStoreReadiness extends StoreReadiness {
+  /** The server the last successful check found: `undefined` until `ready()` or `readyIn()` resolves. */
+  readonly server: MySqlServer | undefined;
 }

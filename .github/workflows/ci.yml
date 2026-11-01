@@ -90,3 +90,38 @@ jobs:
         run: npm run generate:prisma
       - name: e2e tests on MySQL
         run: npx vitest run --project mysql
+
+  e2e-mariadb:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest patches of the LTS lines where utf8mb4_0900_bin is NO PAD (11.4.7, 11.8.2), and the current 11.8.
+        # 11.8 also has innodb_snapshot_isolation on by default, which 11.4 doesn't.
+        mariadb: ['11.4.7', '11.8.2', '11.8']
+    env:
+      SQL_TEST_MYSQL_URL: mysql://root:root@127.0.0.1:3306
+    steps:
+      - name: Start MariaDB
+        # A step, not a service: the executor cases read performance_schema.events_transactions_current, which MariaDB
+        # fills only with these startup options, and a service container takes none.
+        run: |
+          docker run -d --name mariadb -e MARIADB_ROOT_PASSWORD=root -p 3306:3306 mariadb:${{ matrix.mariadb }} \
+            --performance-schema=ON --performance-schema-consumer-events-transactions-current=ON --performance-schema-instrument='transaction=ON'
+          for attempt in $(seq 1 60); do
+            docker exec mariadb mariadb-admin ping -h 127.0.0.1 -uroot -proot --silent && exit 0
+            sleep 2
+          done
+          docker logs mariadb
+          exit 1
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm install
+      - name: Generate the Prisma clients
+        run: npm run generate:prisma
+      - name: e2e tests on MariaDB
+        run: npx vitest run --project mysql

@@ -227,7 +227,7 @@ describe('the clients each executor takes', () => {
     }
   });
 
-  it("fromTypeOrm() takes a MySQL DataSource or its manager, not a transaction's manager, MariaDB or PostgreSQL, and joins only a MySQL transaction", async () => {
+  it("fromTypeOrm() takes a MySQL or MariaDB DataSource or its manager, not a transaction's manager or PostgreSQL, and joins only a MySQL or MariaDB transaction", async () => {
     const typeorm = await clients[2]!.open(database!.url);
     try {
       const manager = typeorm.root as { connection: unknown };
@@ -236,8 +236,8 @@ describe('the clients each executor takes', () => {
         expect(() => fromTypeOrm(tx as never)).toThrow("fromTypeOrm() takes the DataSource (or its manager), not a transaction's manager");
       });
       const other = (type: string) => ({ '@instanceof': Symbol.for('DataSource'), createQueryRunner() {}, options: { type } });
-      expect(() => fromTypeOrm(other('postgres') as never)).toThrow("fromTypeOrm() takes a DataSource of type 'mysql', not 'postgres'.");
-      expect(() => fromTypeOrm(other('mariadb') as never)).toThrow("fromTypeOrm() takes a DataSource of type 'mysql': MariaDB isn't supported yet.");
+      expect(() => fromTypeOrm(other('postgres') as never)).toThrow("fromTypeOrm() takes a DataSource of type 'mysql' or 'mariadb', not 'postgres'.");
+      expect(() => fromTypeOrm(other('mariadb') as never)).not.toThrow('takes a DataSource of type');
       expect(() => fromPgTypeOrm(manager.connection as never)).toThrow("fromTypeOrm() takes a DataSource of type 'postgres', not 'mysql'.");
 
       // A QueryRunner of the application's, after startTransaction().
@@ -253,7 +253,9 @@ describe('the clients each executor takes', () => {
 
       const postgres = other('postgres');
       const pgManager = { '@instanceof': Symbol.for('EntityManager'), connection: postgres, queryRunner: { isTransactionActive: true, connection: postgres, query() {} } };
-      expect(() => typeorm.executor.wrapTransaction(pgManager)).toThrow("Pass the EntityManager of a DataSource of type 'mysql', not 'postgres': the store's statements run on MySQL.");
+      expect(() => typeorm.executor.wrapTransaction(pgManager)).toThrow(
+        "Pass the EntityManager of a DataSource of type 'mysql' or 'mariadb', not 'postgres': the store's statements run on MySQL or MariaDB.",
+      );
     } finally {
       await typeorm.close();
     }
