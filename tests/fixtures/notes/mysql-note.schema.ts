@@ -43,6 +43,7 @@ export const mysqlNoteSchemaOptions: StoreSchemaOptions = {
   defaultSchema: 'nest_notes',
   migrations: [initialMigration, archiveMigration],
   createError: (message, details) => new NoteSchemaError(message, details),
+  mariadb: true,
 };
 
 export const mysqlNoteSchema = new StoreSchema(mysqlNoteSchemaOptions);

@@ -9,6 +9,11 @@
  * - `1213` (ER_LOCK_DEADLOCK): the whole transaction was rolled back to break a deadlock. `retryOnDeadlock()` runs a
  *   store's own transaction again; in the application's transaction, the store rethrows it.
  * - `1205` (ER_LOCK_WAIT_TIMEOUT): the statement waited too long for a lock, and only it was rolled back.
+ * - `1020` (ER_CHECKREAD), MariaDB's only: with `innodb_snapshot_isolation` on (the default since MariaDB 11.6.2), a
+ *   REPEATABLE READ transaction's locking read, or insert, met a row another transaction committed since its snapshot,
+ *   where MySQL reads the latest committed row (and reports a duplicate key as `1062`). The statement is rolled back,
+ *   not the transaction; MariaDB's advice is to run the transaction again. A store's own transactions are READ
+ *   COMMITTED, where it never arises.
  *
  * ```ts
  * try {

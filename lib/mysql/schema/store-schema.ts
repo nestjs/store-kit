@@ -15,7 +15,15 @@ import {
 } from '../../schema/index.js';
 import { databaseMessage } from '../../utils/error.util.js';
 import { hasMethod } from '../../utils/executor.util.js';
-import type { ResolvedStoreOptions, StoreMigration, StoreOptions, StoreReadinessOptions, StoreSchemaOptions } from '../interfaces/mysql-store.interface.js';
+import type {
+  MySqlServer,
+  MySqlStoreReadiness,
+  ResolvedStoreOptions,
+  StoreMigration,
+  StoreOptions,
+  StoreReadinessOptions,
+  StoreSchemaOptions,
+} from '../interfaces/mysql-store.interface.js';
 import { mysqlErrorCode } from '../sql/errors.js';
 import { checkSchema, quoteTable, tableName } from '../sql/identifiers.js';
 import { SqlParams } from '../sql/sql-params.js';
@@ -103,6 +111,8 @@ export class StoreSchema {
   readonly latest: number;
   private readonly migrations: readonly StoreMigration[];
   private readonly createError: StoreSchemaOptions['createError'];
+  /** Whether the store runs on MariaDB too (`StoreSchemaOptions.mariadb`). */
+  private readonly mariadb: boolean;
   /** How long `migrate()` waits for another process's migration lock. */
   private readonly lockWaitSeconds: number = 600;
   /**
@@ -121,6 +131,10 @@ export class StoreSchema {
     this.migrations = Object.freeze([...options.migrations]);
     this.latest = latestVersion(this.migrations);
     this.createError = options.createError;
+    if (options.mariadb !== undefined && typeof options.mariadb !== 'boolean') {
+      throw new TypeError(`${options.storeName}'s StoreSchema: \`mariadb\` must be a boolean, not ${JSON.stringify(options.mariadb)}.`);
+    }
+    this.mariadb = options.mariadb ?? false;
     // Each migration's statements, for the default schema: a statement that isn't DDL, or a table name MySQL would
     // refuse, fails when the store's module loads.
     for (const migration of this.migrations) {
@@ -172,7 +186,7 @@ export class StoreSchema {
 
   /** The last version applied to `schema`: `0` when it has none. Checks the server first (see `readiness()`). */
   async version(db: AnySqlTransaction, schema: string): Promise<number> {
-    await checkServer(db, this.storeName);
+    await checkServer(db, this.storeName, { mariadb: this.mariadb });
     return this.readVersion(db, schema);
   }
 
@@ -181,7 +195,7 @@ export class StoreSchema {
    * or `hint`. A schema ahead of the store (a newer version of the package migrated it) serves.
    */
   async assertMigrated(db: AnySqlTransaction, schema: string, hint?: string): Promise<void> {
-    await checkServer(db, this.storeName);
+    await checkServer(db, this.storeName, { mariadb: this.mariadb });
     await this.assertVersion(db, schema, hint);
   }
 
@@ -210,7 +224,7 @@ export class StoreSchema {
     checkSchema(schema, this.storeName);
     return executor.transaction(
       async (tx) => {
-        const { database } = await checkServer(tx, this.storeName);
+        const { database } = await checkServer(tx, this.storeName, { mariadb: this.mariadb });
         const current = await this.readVersion(tx, schema);
         if (current >= this.latest) {
           return [];
@@ -268,19 +282,22 @@ export class StoreSchema {
   }
 
   /**
-   * The store's readiness (see `StoreReadiness`): the server and connection checked (MySQL, not MariaDB; 8.0.19 or
-   * later; a strict `sql_mode`; a current database), then the schema migrated (`migrate`) or checked, once;
-   * migrations reported to `logger`.
+   * The store's readiness (see `StoreReadiness`): the server and connection checked (MySQL 8.0.19 or later, or MariaDB
+   * where `utf8mb4_0900_bin` doesn't pad, for a store that opts in; a strict `sql_mode`; a current database), then the
+   * schema migrated (`migrate`) or checked, once; migrations reported to `logger`. Its `server` is the one the check
+   * found.
    */
-  readiness(options: StoreReadinessOptions): StoreReadiness {
+  readiness(options: StoreReadinessOptions): MySqlStoreReadiness {
     const { executor, schema } = options;
-    return new Readiness(this.storeName, options, {
+    let server: MySqlServer | undefined;
+    const readiness: StoreReadiness = new Readiness(this.storeName, options, {
       check: async (db) => {
-        await checkServer(db, this.storeName);
+        ({ server } = await checkServer(db, this.storeName, { mariadb: this.mariadb }));
       },
       assertMigrated: (db, hint) => this.assertVersion(db, schema, hint),
       migrate: () => this.migrate(executor, schema),
     });
+    return Object.defineProperty(readiness, 'server', { get: () => server, enumerable: true }) as MySqlStoreReadiness;
   }
 
   private async assertVersion(db: AnySqlTransaction, schema: string, hint?: string): Promise<void> {

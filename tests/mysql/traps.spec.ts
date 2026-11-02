@@ -1,5 +1,6 @@
 /**
- * MySQL's traps a store is built around, each shown on the server and with what the kit does about it:
+ * MySQL's traps a store is built around, each shown on the server and with what the kit does about it (on MariaDB
+ * too, where a trap differs or doesn't exist, as noted at it):
  *
  * - collation: the default compares case- and accent-insensitively, `utf8mb4_bin` ignores trailing spaces;
  *   keyColumn()'s `utf8mb4_0900_bin` keeps `abc`, `ABC`, `ábc` and `abc ` apart;
@@ -56,7 +57,8 @@ describe("MySQL's traps", () => {
     await executor.execute(`CREATE TABLE trap_keys_bin (k varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL PRIMARY KEY)`);
     await executor.execute(`CREATE TABLE trap_keys_kit (k ${keyColumn(20)} NOT NULL PRIMARY KEY)`);
 
-    expect(await insertAll('trap_keys_default', keys)).toEqual(['"abc" inserted', '"ABC" duplicate', '"ábc" duplicate', '"abc " inserted']);
+    // MariaDB's default (utf8mb4_uca1400_ai_ci) ignores trailing spaces too.
+    expect(await insertAll('trap_keys_default', keys)).toEqual(['"abc" inserted', '"ABC" duplicate', '"ábc" duplicate', database?.mariadb ? '"abc " duplicate' : '"abc " inserted']);
     expect(await insertAll('trap_keys_bin', keys)).toEqual(['"abc" inserted', '"ABC" inserted', '"ábc" inserted', '"abc " duplicate']);
     expect(await insertAll('trap_keys_kit', keys)).toEqual(keys.map((key) => `${JSON.stringify(key)} inserted`));
     // A lookup compares by the column's collation, not the connection's: the text goes bare (?).
@@ -166,7 +168,8 @@ describe("MySQL's traps", () => {
       const blocked = await executor
         .transaction((tx) => tx.query("SELECT id FROM trap_parents WHERE id = 'p' FOR UPDATE NOWAIT"), { isolationLevel: 'read committed' })
         .catch((e: unknown) => e);
-      expect(mysqlErrorCode(blocked)).toBe(3572); // Statement aborted because lock(s) could not be acquired immediately and NOWAIT is set
+      // Statement aborted because lock(s) could not be acquired immediately and NOWAIT is set; MariaDB says lock wait timeout.
+      expect(mysqlErrorCode(blocked)).toBe(database?.mariadb ? 1205 : 3572);
       await child.rollback();
     } finally {
       child.release();
@@ -177,8 +180,11 @@ describe("MySQL's traps", () => {
   it('keywords: MySQL 8 reserves rank and first_value, which columns() puts in backticks', async () => {
     await executor.execute('CREATE TABLE trap_words (id int NOT NULL PRIMARY KEY, `rank` int NOT NULL)');
     await executor.execute('INSERT INTO trap_words (id, `rank`) VALUES (1, 7)');
-    expect(mysqlErrorCode(await executor.query('SELECT rank FROM trap_words').catch((e: unknown) => e))).toBe(1064);
-    expect(mysqlErrorCode(await executor.query('SELECT 1 AS first_value').catch((e: unknown) => e))).toBe(1064);
+    // MariaDB reserves neither: the backticks are harmless there.
+    if (!database?.mariadb) {
+      expect(mysqlErrorCode(await executor.query('SELECT rank FROM trap_words').catch((e: unknown) => e))).toBe(1064);
+      expect(mysqlErrorCode(await executor.query('SELECT 1 AS first_value').catch((e: unknown) => e))).toBe(1064);
+    }
     expect(await executor.query(`SELECT ${columns(['id', 'rank'], 'w')} FROM trap_words w`)).toEqual([{ id: '1', rank: '7' }]);
   });
 
@@ -195,7 +201,8 @@ describe("MySQL's traps", () => {
     const [raw] = (await pool.query('SELECT big, doc FROM trap_values'))[0] as Array<{ big: number; doc: unknown }>;
     expect(raw).toEqual({ big: 9007199254740992, doc: { a: [true], z: 1 } });
     const [text] = await executor.query<Record<string, string>>(`SELECT ${columns(['big', 'doc'], 'v')} FROM trap_values v`);
-    expect(text).toEqual({ big: '9007199254740993', doc: '{"a": [true], "z": 1}' });
+    // MySQL stores a document normalized (its members sorted), MariaDB as it was written: toJson() reads either.
+    expect(text).toEqual({ big: '9007199254740993', doc: database?.mariadb ? '{"z": 1, "a": [true]}' : '{"a": [true], "z": 1}' });
     expect(toJson(text!.doc)).toEqual({ z: 1, a: [true] });
   });
 });

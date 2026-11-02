@@ -28,7 +28,7 @@ const PRISMA_ISOLATION: Record<string, string> = {
 /**
  * A `SqlExecutor` on a Prisma client for MySQL (`$queryRawUnsafe()`, `$executeRawUnsafe()` and interactive
  * transactions). Prisma 7 reaches MySQL through the `@prisma/adapter-mariadb` driver adapter, which serves MySQL as
- * well as MariaDB (the stores run on MySQL only). The transaction object is the transaction client that
+ * well as MariaDB (the stores run on both). The transaction object is the transaction client that
  * `prisma.$transaction(async (tx) => ...)` hands its callback. Prisma ends an interactive transaction that outlasts its
  * `timeout`: yours keep your own settings, the store's take `options`.
  *

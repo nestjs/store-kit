@@ -1,5 +1,8 @@
 import { inListKind } from '../../utils/params.util.js';
 
+/** A JSON document from its text, on MySQL and MariaDB alike. */
+const JSON_DOCUMENT = "JSON_EXTRACT(?, '$')";
+
 /**
  * A statement's parameters, as a MySQL store writes them: every value goes to the client as a string (or `null`) for a
  * `?` placeholder, cast in the statement where it isn't text (`CAST(? AS SIGNED)`), and every column comes back cast
@@ -50,28 +53,30 @@ export class SqlParams {
   }
 
   /**
-   * `CAST(? AS JSON)`, for a JSON column; `null` and `undefined` as SQL `NULL`. A value holding numbers other than safe
-   * integers (`0.1`, `1e-30`) goes as `JSON_SET(CAST(? AS JSON), ?, CAST(? AS DOUBLE), ...)`: a `0` in the document's
-   * text, then each number set at its path. MySQL 8's JSON text parser rounds a double whose digits pass 2^53, or
-   * whose exponent is large, to a neighbor (`0.9999999999999999` comes back `1`, `7e-30` `6.999999999999999e-30`),
-   * where `CAST(? AS DOUBLE)` reads it exactly; MySQL 9 parses JSON text exactly, and stores the same double either way.
+   * `JSON_EXTRACT(?, '$')`, for a JSON column: the document parsed from its text, as `CAST(? AS JSON)` would on MySQL,
+   * in a form MariaDB takes too (it has no JSON cast); `null` and `undefined` as SQL `NULL`. A value holding numbers
+   * other than safe integers (`0.1`, `1e-30`) goes as `JSON_SET(JSON_EXTRACT(?, '$'), ?, CAST(? AS DOUBLE), ...)`: a
+   * `0` in the document's text, then each number set at its path. MySQL 8's JSON text parser rounds a double whose
+   * digits pass 2^53, or whose exponent is large, to a neighbor (`0.9999999999999999` comes back `1`, `7e-30`
+   * `6.999999999999999e-30`), where `CAST(? AS DOUBLE)` reads it exactly; MySQL 9 parses JSON text exactly, and stores
+   * the same double either way.
    */
   json(value: unknown): string {
     if (value === null || value === undefined) {
-      return this.add(null, 'CAST(? AS JSON)');
+      return this.add(null, JSON_DOCUMENT);
     }
     const text = JSON.stringify(value);
     const doubles: Array<[path: string, value: number]> = [];
     // A function or a symbol stringifies to undefined, as before: nothing to walk.
     const document = text === undefined ? undefined : zeroDoubles(JSON.parse(text), '$', doubles);
     if (doubles.length === 0) {
-      return this.add(text, 'CAST(? AS JSON)');
+      return this.add(text, JSON_DOCUMENT);
     }
     this.values.push(JSON.stringify(document));
     for (const [path, double] of doubles) {
       this.values.push(path, String(double));
     }
-    return `JSON_SET(CAST(? AS JSON), ${doubles.map(() => '?, CAST(? AS DOUBLE)').join(', ')})`;
+    return `JSON_SET(${JSON_DOCUMENT}, ${doubles.map(() => '?, CAST(? AS DOUBLE)').join(', ')})`;
   }
 
   /**

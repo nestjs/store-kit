@@ -38,11 +38,11 @@ const rows = async (sql: string, params: unknown[] = []) => (await database!.adm
 /** The tables whose names start with `<schema>_`. */
 const tables = async (schema: string) =>
   (
-    await rows('SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND LEFT(TABLE_NAME, ?) = ? ORDER BY TABLE_NAME', [
-      schema.length + 1,
-      `${schema}_`,
-    ])
-  ).map((row) => row.name);
+    await rows('SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND LEFT(TABLE_NAME, ?) = ?', [schema.length + 1, `${schema}_`])
+  )
+    .map((row) => row.name as string)
+    // Sorted here: the servers' information_schema collations order `notes` and `note_tags` differently.
+    .sort();
 
 /** The DDL a run sent, in order: not the lock, the reads, nor the progress records. */
 const ddl = (statements: Array<{ text: string }>) => statements.map((statement) => statement.text).filter((text) => /^(CREATE|ALTER|DROP)\b/.test(text));
@@ -315,7 +315,8 @@ describe('StoreSchema.migrate() on MySQL', () => {
     expect((await migrating.query('SELECT @@session.lock_wait_timeout = @@global.lock_wait_timeout AS restored'))[0]).toEqual([{ restored: 1 }]);
   });
 
-  it("gives every table a primary key: the kit's and the store's migrate with sql_require_primary_key on, where a table without one fails", async () => {
+  // MySQL's session variable: MariaDB's counterpart (innodb_force_primary_key) is global, and the tests change no server setting.
+  it.skipIf(database?.mariadb)("gives every table a primary key: the kit's and the store's migrate with sql_require_primary_key on, where a table without one fails", async () => {
     const strict = pool();
     strict.on('connection', (connection) => {
       connection.query('SET SESSION sql_require_primary_key = ON');
