@@ -1,6 +1,6 @@
 {
   "name": "@nestjs/store-kit",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Nest - modern, fast, powerful node.js web framework (@store-kit)",
   "author": "Kamil Mysliwiec",
   "license": "MIT",
